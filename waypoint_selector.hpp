@@ -49,6 +49,8 @@ class WaypointSelector {
 
 public:
     double proximity_;
+    bool subscription_started_gps;
+    bool subscription_started_odom;
 
     bool readWaypoints(std::ifstream& waypoints, std::vector<std::pair<sensor_msgs::NavSatFix, bool> >& gps_waypoints, int& num_of_waypoints, std::string filename);
     geometry_msgs::Pose2D interpret(sensor_msgs::NavSatFix current, sensor_msgs::NavSatFix target);
@@ -62,7 +64,9 @@ public:
     WaypointSelector(std::string file, int strategy);
     geometry_msgs::Pose2D findTarget();
     bool isInsideNoMansLand();
+    void convert_gps_to_odom();
     geometry_msgs::PoseStamped convert_Pose2D_to_PoseStamped(geometry_msgs::Pose2D pose2d);
     ros::Publisher next_waypoint_publisher;
     ros::Publisher nml_flag_publisher;
+
 };

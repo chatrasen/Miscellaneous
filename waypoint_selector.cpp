@@ -1,3 +1,11 @@
+/***********************************************************************
+Changes made by: Anurag A. Bharadwaj
+Date: 19th May 
+
+This node publishes the Final output to the high level planner in PoseStamped form
+in the odom frame.
+
+*************************************************************************/
 #include <waypoint_selector.hpp>
 
 typedef long double precnum_t;
@@ -96,10 +104,12 @@ double WaypointSelector::getMod(geometry_msgs::Point p1, geometry_msgs::Pose2D p
 
 void WaypointSelector::set_current_gps_position(sensor_msgs::NavSatFix subscribed_fix) {
     current_gps_position_ = subscribed_fix;
+    subscription_started_gps = true; //makes sure we have subscribed at least once before we process the data
 }
 
 void WaypointSelector::set_current_odom_position(nav_msgs::Odometry subscribed_fix){
     current_odom_position_ = subscribed_fix;
+    subscription_started_odom = true; //makes sure that we have subscribed at least once before we process the data
 }
 
 
@@ -173,6 +183,7 @@ void WaypointSelector::set_planner_status(std_msgs::String status) {
 }
 
 WaypointSelector::WaypointSelector(std::string file, int strategy) {
+    
     if (!readWaypoints(waypoints_, gps_waypoints_, num_of_waypoints_, file)) {
         std::cout << "exiting";
         exit(1);
@@ -183,26 +194,16 @@ WaypointSelector::WaypointSelector(std::string file, int strategy) {
     planner_status_subscriber = node_handle.subscribe("local_planner/status", buffer_size, &WaypointSelector::set_planner_status, this);
     fix_subscriber = node_handle.subscribe("gps/fix", buffer_size, &WaypointSelector::set_current_gps_position, this);
     odom_subscriber = node_handle.subscribe("odom", buffer_size,  &WaypointSelector::set_current_odom_position, this);
-    next_waypoint_publisher = node_handle.advertise<sensor_msgs::NavSatFix>("waypoint_selector/next_waypoint", buffer_size);
+    next_waypoint_publisher = node_handle.advertise<geometry_msgs::PoseStamped>("waypoint_navigator/proposed_target", buffer_size);
     nml_flag_publisher = node_handle.advertise<std_msgs::Bool>("waypoint_selector/nml_flag", buffer_size);
-
-    ros::spinOnce();
-
-    for(std::vector < std::pair <sensor_msgs::NavSatFix, bool> >::iterator it = gps_waypoints_.begin(); it != gps_waypoints_.end(); ++it){
-        geometry_msgs::Pose2D bot_relative_2D;
-        std::pair<geometry_msgs::Pose2D, bool> odom_target_2D;
-
-        bot_relative_2D = interpret(current_gps_position_, it->first);
-        odom_target_2D.first.x = bot_relative_2D.x + current_odom_position_.pose.pose.position.x;
-        odom_target_2D.first.y = bot_relative_2D.y + current_odom_position_.pose.pose.position.y;
-        odom_target_2D.first.theta = M_PI / 2;
-        odom_target_2D.second = false;
-        odom_waypoints_.push_back(odom_target_2D);
-    }
+   
     strategy_ = strategy;
     last_waypoint_ = odom_waypoints_.end();
     inside_no_mans_land_ = false;
     num_visited_waypoints_ = 0;
+    subscription_started_gps = false;
+    subscription_started_odom = false;
+   // std::exit(0);
 }
 
 geometry_msgs::Pose2D WaypointSelector::findTarget() {
@@ -249,6 +250,7 @@ geometry_msgs::Pose2D WaypointSelector::findTarget() {
 geometry_msgs::PoseStamped WaypointSelector::convert_Pose2D_to_PoseStamped(geometry_msgs::Pose2D pose2d){
     geometry_msgs::PoseStamped pose_stamp;
 
+
     pose_stamp.pose.position.x = pose2d.x;
     pose_stamp.pose.position.y = pose2d.y;
     pose_stamp.pose.position.z = 0;
@@ -260,8 +262,25 @@ geometry_msgs::PoseStamped WaypointSelector::convert_Pose2D_to_PoseStamped(geome
     pose_stamp.pose.orientation.y=frame_quat.y();
     pose_stamp.pose.orientation.z=frame_quat.z();
     pose_stamp.pose.orientation.w=frame_quat.w();
+
+    return pose_stamp;
 }
 
 bool WaypointSelector::isInsideNoMansLand() {
     return inside_no_mans_land_;
+}
+
+void WaypointSelector::convert_gps_to_odom()
+{
+    for(std::vector < std::pair <sensor_msgs::NavSatFix, bool> >::iterator it = gps_waypoints_.begin(); it != gps_waypoints_.end(); ++it){
+        geometry_msgs::Pose2D bot_relative_2D;
+        std::pair<geometry_msgs::Pose2D, bool> odom_target_2D;
+
+        bot_relative_2D = interpret(current_gps_position_, it->first);
+        odom_target_2D.first.x = bot_relative_2D.x + current_odom_position_.pose.pose.position.x;
+        odom_target_2D.first.y = bot_relative_2D.y + current_odom_position_.pose.pose.position.y;
+        odom_target_2D.first.theta = M_PI / 2;
+        odom_target_2D.second = false;
+        odom_waypoints_.push_back(odom_target_2D);
+    }
 }
